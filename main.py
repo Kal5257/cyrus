@@ -1,24 +1,25 @@
+# main.py
 import json
 import tempfile
 import wave
 import requests
 from faster_whisper import WhisperModel
-from audio_test import record_seconds, resample_linear
+from audio_test import record_seconds, resample_linear  # or audio_auto if that's your file
 
-
-# Config 
-OLLAMA_MODEL = "llama3"         
+# ---------- Config ----------
+OLLAMA_MODEL = "llama3"                 # match what you pulled (e.g., "llama3", "llama3.2:3b-instruct", "phi3:mini")
 OLLAMA_BASE  = "http://localhost:11434"
-WHISPER_SIZE = "small"          
+WHISPER_SIZE = "small"                  # "tiny" | "base" | "small" | "medium" | "large"
 
 SYSTEM_PROMPT = (
-    "You are Kal's private voice assistant. Be concise, helpful, and keep context across turns. "
+    "You are Kal's private voice assistant. Your name is Cyrus. Be concise, helpful, and keep context across turns. "
     "If the user says 'reset', acknowledge and start a fresh conversation. "
     "If the user says 'goodbye', say a short farewell."
 )
 
-# Init Whisper (CPU for now; switch to device='cuda' when GPU is ready)
+# ---------- Force Whisper on CPU for stability ----------
 whisper = WhisperModel(WHISPER_SIZE, device="cpu", compute_type="int8")
+print("[whisper] using cpu/int8")
 
 # ---------- Ollama helpers ----------
 def _parse_streaming(resp):
@@ -50,8 +51,8 @@ def _flatten_messages_for_prompt(messages):
     return "\n".join(lines)
 
 def ask_ollama_with_history(messages, model=OLLAMA_MODEL):
-    """Prefer /api/chat; fall back to /api/generate (stream/non-stream)."""
-    # 1) Try chat non-stream
+    """Prefer /api/chat; fall back to /api/generate (handles streaming/non-streaming)."""
+    # 1) Try /api/chat non-stream
     try:
         r = requests.post(
             f"{OLLAMA_BASE}/api/chat",
@@ -61,7 +62,7 @@ def ask_ollama_with_history(messages, model=OLLAMA_MODEL):
         if r.status_code == 200:
             return r.json()["message"]["content"].strip()
         if r.status_code != 404:
-            # Some servers may still stream
+            # Server might ignore stream=False and still stream
             r = requests.post(
                 f"{OLLAMA_BASE}/api/chat",
                 json={"model": model, "messages": messages, "stream": True},
@@ -73,9 +74,9 @@ def ask_ollama_with_history(messages, model=OLLAMA_MODEL):
     except requests.RequestException:
         pass
 
-    # 2) Fallback: /api/generate
+    # 2) Fallback to /api/generate
     prompt = _flatten_messages_for_prompt(messages)
-    # try non-stream
+    # non-stream
     try:
         r = requests.post(
             f"{OLLAMA_BASE}/api/generate",
@@ -87,7 +88,7 @@ def ask_ollama_with_history(messages, model=OLLAMA_MODEL):
     except requests.JSONDecodeError:
         pass
 
-    # stream parse
+    # stream
     r = requests.post(
         f"{OLLAMA_BASE}/api/generate",
         json={"model": model, "prompt": prompt, "stream": True},
@@ -99,9 +100,9 @@ def ask_ollama_with_history(messages, model=OLLAMA_MODEL):
 
 # ---------- STT ----------
 def transcribe_int16(audio_int16, in_rate_hz: int) -> str:
-    """Transcribe mono int16 audio at in_rate_hz with Whisper."""
+    """Transcribe mono int16 audio at in_rate_hz with Whisper (CPU)."""
     print("Transcribing...")
-    # Whisper expects 16kHz; resample if needed
+    # Whisper expects ~16kHz WAV; resample if needed
     if in_rate_hz != 16000:
         audio_int16 = resample_linear(audio_int16, in_rate_hz, 16000)
         in_rate_hz = 16000
@@ -112,7 +113,8 @@ def transcribe_int16(audio_int16, in_rate_hz: int) -> str:
             wf.setsampwidth(2)  # int16
             wf.setframerate(in_rate_hz)
             wf.writeframes(audio_int16.tobytes())
-        segments, _ = whisper.transcribe(tmp.name)
+        # beam_size=1 keeps it fast/light on CPU
+        segments, _ = whisper.transcribe(tmp.name, beam_size=1)
 
     text = "".join(s.text for s in segments).strip()
     return text
@@ -121,12 +123,11 @@ def transcribe_int16(audio_int16, in_rate_hz: int) -> str:
 if __name__ == "__main__":
     print("Jarvis is listening. Say 'goodbye' to exit, or 'reset' to clear memory.\n")
 
-    # Running conversation history
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     try:
         while True:
-            # 1) Record speech
+            # 1) Record speech (10 seconds)
             audio, in_rate, out_rate, in_idx, out_idx = record_seconds(10)
 
             # 2) STT
@@ -137,21 +138,20 @@ if __name__ == "__main__":
 
             print(f"You said: {text}")
 
-            # Handle local commands
+            # Local commands
             lower = text.lower().strip()
             if "reset" in lower:
                 messages = [{"role": "system", "content": SYSTEM_PROMPT}]
                 print("Memory cleared. (Listening…)\n")
-                # Optionally acknowledge with TTS later
                 continue
-            if "goodbye" in lower or "bye" == lower:
-                print("Assistant: Goodbye! 👋")
+            if "goodbye" in lower or lower == "bye":
+                print("Assistant: Goodbye!")
                 break
 
             # 3) Append user turn
             messages.append({"role": "user", "content": text})
 
-            # 4) Ask Ollama with full history
+            # 4) Ask Ollama with history
             print("Asking Ollama…")
             reply = ask_ollama_with_history(messages)
             print("Assistant:", reply, "\n")
@@ -159,9 +159,7 @@ if __name__ == "__main__":
             # 5) Append assistant turn
             messages.append({"role": "assistant", "content": reply})
 
-            # 6) (Optional) speak reply with TTS here (we’ll add Piper next)
+            # (Optional) add TTS here
 
     except KeyboardInterrupt:
-        print("\nExiting. Bye! 👋")
-
-  
+        print("\nExiting. Bye!")
