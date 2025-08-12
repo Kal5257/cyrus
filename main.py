@@ -12,10 +12,15 @@ import sounddevice as sd
 import soundfile as sf
 import piper
 import re
-
+import time  # <-- added
 
 from faster_whisper import WhisperModel
 from audio_test import record_seconds, resample_linear   
+
+from memory import (
+    load_facts, save_facts, append_history, load_recent_history,
+    add_fact, forget_fact, summarize_facts, parse_memory_command
+)
 
 # Config 
 OLLAMA_MODEL = "llama3"                 
@@ -29,7 +34,7 @@ PIPER_VOICE_CFG  = r".\voices\en_US-ryan-high.onnx.json"
 PIPER_EXE = shutil.which("piper.exe") or (os.path.abspath("./piper.exe") if os.path.exists("./piper.exe") else None)
 
 SYSTEM_PROMPT = (
-    "You are Kal's private voice assistant. Your name is Cyrus. Be concise, helpful, and keep context across turns. "
+    "I am Kal. You are my voice assistant. Your name is Cyrus. Be concise, helpful, and keep context across turns. "
     "If the user says 'reset', acknowledge and start a fresh conversation. "
     "If the user says 'goodbye', say a short farewell."
 )
@@ -37,6 +42,10 @@ SYSTEM_PROMPT = (
 # STT (CPU for stability) 
 whisper = WhisperModel(WHISPER_SIZE, device="cpu", compute_type="int8")
 print("[whisper] using cpu/int8")
+
+# Load memory
+facts = load_facts()
+print("[memory] loaded facts:", summarize_facts(facts) or "(none)")
 
 # Piper TTS 
 def load_voice():
@@ -315,7 +324,10 @@ def transcribe_int16(audio_int16, in_rate_hz: int) -> str:
 if __name__ == "__main__":
     print("Jarvis is listening. Say 'goodbye' to exit, or 'reset' to clear memory.\n")
 
+    # Seed messages with system prompt + memory
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if facts:
+        messages.append({"role": "system", "content": "Known facts about Kal:\n" + summarize_facts(facts)})
 
     try:
         while True:
@@ -330,10 +342,16 @@ if __name__ == "__main__":
 
             print(f"You said: {text}")
 
+            # Log user turn
+            append_history({"role": "user", "text": text, "ts": time.time()})
+
             # Local commands
             lower = text.lower().strip()
             if "reset" in lower:
                 messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+                # also re-inject known facts after reset so they persist in context
+                if facts:
+                    messages.append({"role": "system", "content": "Known facts about Kal:\n" + summarize_facts(facts)})
                 speak("Okay, I cleared our conversation.")
                 print("Memory cleared. (Listening…)\n")
                 continue
@@ -342,6 +360,37 @@ if __name__ == "__main__":
                 print("Assistant: Goodbye! 👋")
                 break
 
+            # Memory commands: "remember ..." / "forget ..."
+            cmd = parse_memory_command(text)
+            if cmd:
+                kind, payload = cmd
+                if kind == "remember":
+                    if add_fact(facts, payload):
+                        save_facts(facts)
+                        speak("Got it. I’ll remember that.")
+                        print("[memory] remember:", payload)
+                        messages.append({"role": "system", "content": f"New fact saved: {payload}"})
+                    else:
+                        speak("I already had that saved.")
+                    continue
+                elif kind == "forget":
+                    if forget_fact(facts, payload):
+                        save_facts(facts)
+                        speak("Okay, I’ve forgotten that.")
+                        print("[memory] forget:", payload)
+                        messages.append({"role": "system", "content": f"Fact forgotten: {payload}"})
+                    else:
+                        speak("I couldn’t find that in memory.")
+                    continue
+
+            # Quick memory query
+            if "what do you remember" in lower or "what do you know about me" in lower:
+                summary = summarize_facts(facts) or "I don't have any saved facts yet."
+                speak("Here's what I remember.")
+                print(summary)
+                messages.append({"role": "system", "content": "Reminder of known facts:\n" + summary})
+                continue
+
             # 3) Append user turn
             messages.append({"role": "user", "content": text})
 
@@ -349,6 +398,9 @@ if __name__ == "__main__":
             print("Asking Ollama…")
             reply = ask_ollama_with_history(messages)
             print("Assistant:", reply, "\n")
+
+            # Log assistant turn
+            append_history({"role": "assistant", "text": reply, "ts": time.time()})
 
             # 5) Append assistant turn
             messages.append({"role": "assistant", "content": reply})

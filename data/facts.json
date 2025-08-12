@@ -1,0 +1,21 @@
+{
+  "profile": {
+    "name": "Kal",
+    "pronouns": "she/her"
+  },
+  "preferences": {},
+  "facts": [
+    {
+      "text": "my favorite food is pizza.",
+      "added_at": 1755003026
+    },
+    {
+      "text": "a few more facts about me.",
+      "added_at": 1755003151
+    },
+    {
+      "text": "I love the color black.",
+      "added_at": 1755003170
+    }
+  ]
+}
