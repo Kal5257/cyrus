@@ -38,9 +38,13 @@ jobs:
       - name: Run tests
         env:
 
+          PYTHONPATH: ${{ github.workspace }}
           CYRUS_DATA_DIR: ${{ github.workspace }}\tmp_data
+          CYRUS_NO_AUDIO: "1"
+          CYRUS_NO_STT: "1"
         run: |
-          pytest -q --maxfail=1 `
+          pytest -q `
+            --maxfail=1 `
             --junitxml=reports/junit.xml `
             --html=reports/report.html --self-contained-html `
             --cov=. --cov-report=term-missing

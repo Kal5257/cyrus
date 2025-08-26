@@ -1,8 +1,7 @@
-import os
 import sys
+from pathlib import Path
 
-# Add repo root to sys.path so `import memory` (and peers) works everywhere
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-ROOT = os.path.abspath(os.path.join(ROOT, '..'))  # go up two levels from tests/
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+# Resolve repo root from this file: <repo>/tests/conftest.py -> parents[1] = <repo>
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
