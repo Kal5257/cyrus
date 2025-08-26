@@ -22,7 +22,7 @@ except Exception:
     HAS_PIPER = False
 
 from faster_whisper import WhisperModel
-from audio_test import record_seconds, resample_linear   
+from audio_io import record_seconds, resample_linear   
 
 from memory import (
     load_facts, save_facts, append_history, load_recent_history,
@@ -179,7 +179,7 @@ def _noise_gate(x: np.ndarray, sr: int, win_ms: float = 20.0, thresh: float = 1e
     return y
 
 def speak(text: str, pause_sec: float = 0.28, length_scale: float = 1.05):
-    
+
     if not HAS_PIPER or _tts is None:
         # In CI or missing Piper: just print, no audio
         print(f"(speak skipped) {text}")
