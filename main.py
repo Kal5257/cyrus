@@ -1,4 +1,5 @@
-# main.py
+# Imports
+
 import json
 import os
 import shutil
@@ -30,16 +31,20 @@ WHISPER_SIZE = "small"
 # Piper voice model paths
 PIPER_VOICE_ONNX = r".\voices\en_US-ryan-high.onnx"
 PIPER_VOICE_CFG  = r".\voices\en_US-ryan-high.onnx.json"   
-# Optional CLI fallback 
+
+# CLI fallback 
 PIPER_EXE = shutil.which("piper.exe") or (os.path.abspath("./piper.exe") if os.path.exists("./piper.exe") else None)
 
 SYSTEM_PROMPT = (
-    "I am Kal. You are my voice assistant. Your name is Cyrus. Be concise, helpful, and keep context across turns. "
+    "I am Kal. You are my voice assistant, Cyrus. Be concise and helpful, and keep context across turns. "
+    "MEMORY ETIQUETTE: Do NOT proactively mention any stored personal facts about Kal (e.g., favorites, profile) "
+    "unless she explicitly asks for them. Only disclose saved facts when asked (e.g., 'what do you remember?', "
+    "'what's my favorite...?', 'what do you know about me?'). "
     "If the user says 'reset', acknowledge and start a fresh conversation. "
     "If the user says 'goodbye', say a short farewell."
 )
 
-# STT (CPU for stability) 
+# STT  
 whisper = WhisperModel(WHISPER_SIZE, device="cpu", compute_type="int8")
 print("[whisper] using cpu/int8")
 
@@ -81,6 +86,7 @@ def _current_output_rate() -> int:
     return int(info['default_samplerate'])
 
 def _split_sentences(text: str):
+
     # simple sentence splitter
     parts = re.split(r'(?<=[\.\?\!])\s+', text.strip())
     return [p for p in parts if p]
@@ -183,7 +189,7 @@ def speak(text: str, pause_sec: float = 0.28, length_scale: float = 1.05):
         used_cli = False
         if PIPER_EXE:
             try:
-                # NOTE: no sentence_silence here
+                # no sentence_silence here
                 subprocess.run(
                     [
                         PIPER_EXE,

@@ -1,4 +1,3 @@
-# memory.py
 import json, time, re
 from pathlib import Path
 
@@ -8,9 +7,9 @@ FACTS_PATH = DATA_DIR / "facts.json"
 HIST_PATH  = DATA_DIR / "history.jsonl"
 
 DEFAULT_FACTS = {
-    "profile": {"name": "Kal", "pronouns": "she/her"},  # seed defaults; edit as you like
-    "preferences": {},          # e.g., {"voice": "ryan-high", "music": "lofi"}
-    "facts": []                 # list of {"text": "...", "added_at": 1690000000}
+    "profile": {"name": "Kal", "pronouns": "she/her"},  
+    "preferences": {},         
+    "facts": []                
 }
 
 # ---------- load/save ----------
@@ -66,17 +65,32 @@ def summarize_facts(facts, max_items=10):
 
 # ---------- simple intent hooks ----------
 
-REMEMBER_PAT = re.compile(r"\b(remember|note|save)\b(?:\s+that)?\s+(?P<payload>.+)$", re.I)
-FORGET_PAT   = re.compile(r"\b(forget|delete|remove)\b\s+(?P<payload>.+)$", re.I)
+REMEMBER_CMD = re.compile(r"^\s*(?:please\s*)?remember\s*[:\-]?\s*(?P<payload>.+?)\s*$", re.I)
+FORGET_CMD   = re.compile(r"^\s*(?:please\s*)?forget\s*[:\-]?\s*(?P<payload>.+?)\s*$", re.I)
+
+
 
 def parse_memory_command(text: str):
-    """Return ('remember', payload) or ('forget', payload) or None."""
+    """Return ('remember', payload) or ('forget', payload) or None.
+       Only triggers if the message STARTS with remember/forget (imperative)."""
     s = (text or "").strip()
     if not s:
         return None
-    # search anywhere in the sentence (not just at start)
-    if m := REMEMBER_PAT.search(s):
-        return ("remember", m.group("payload").strip())
-    if m := FORGET_PAT.search(s):
-        return ("forget", m.group("payload").strip())
+
+    # Exact command form only (no mid-sentence triggers)
+    m = REMEMBER_CMD.match(s)
+    if m:
+        payload = m.group("payload").strip()
+        # Optional safety: ignore questions like "remember when...?"
+        if payload.endswith("?"):
+            return None
+        return ("remember", payload)
+
+    m = FORGET_CMD.match(s)
+    if m:
+        payload = m.group("payload").strip()
+        if payload.endswith("?"):
+            return None
+        return ("forget", payload)
+
     return None
