@@ -20,6 +20,7 @@ try:
 except Exception:
     piper = None
     HAS_PIPER = False
+    
 
 from faster_whisper import WhisperModel
 from audio_io import record_seconds, resample_linear   
