@@ -1,4 +1,5 @@
 import memory
+import time
 
 def test_add_save_load_forget_roundtrip():
     facts = memory.load_facts()
@@ -19,12 +20,13 @@ def test_add_save_load_forget_roundtrip():
     reloaded2 = memory.load_facts()
     assert not any("pizza is great" in f["text"] for f in reloaded2["facts"])
 
+
 def test_summarize_facts_lists_newest_first():
     facts = memory.load_facts()
     memory.add_fact(facts, "A")
+    time.sleep(1.1)  # ensure different second for added_at
     memory.add_fact(facts, "B")  # newer
     summary = memory.summarize_facts(facts, max_items=10)
 
-    # Expect a "Recent facts:" line with B before A
     assert "Recent facts:" in summary
     assert summary.index("B") < summary.index("A")
