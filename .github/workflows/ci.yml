@@ -23,7 +23,7 @@ jobs:
         with:
           path: |
             ~\AppData\Local\pip\Cache
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements-ci.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
 
