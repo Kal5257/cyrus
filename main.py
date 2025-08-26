@@ -11,9 +11,15 @@ import numpy as np
 import requests
 import sounddevice as sd
 import soundfile as sf
-import piper
 import re
 import time  # <-- added
+
+try:
+    import piper
+    HAS_PIPER = True
+except Exception:
+    piper = None
+    HAS_PIPER = False
 
 from faster_whisper import WhisperModel
 from audio_test import record_seconds, resample_linear   
@@ -54,6 +60,11 @@ print("[memory] loaded facts:", summarize_facts(facts) or "(none)")
 
 # Piper TTS 
 def load_voice():
+
+    if not HAS_PIPER:
+        print("[piper] not available; skipping TTS init.")
+        return None, 22050
+     
     print(f"[piper] loading voice: {PIPER_VOICE_ONNX}")
     v = piper.PiperVoice.load(PIPER_VOICE_ONNX)  
     try:
@@ -168,6 +179,12 @@ def _noise_gate(x: np.ndarray, sr: int, win_ms: float = 20.0, thresh: float = 1e
     return y
 
 def speak(text: str, pause_sec: float = 0.28, length_scale: float = 1.05):
+    
+    if not HAS_PIPER or _tts is None:
+        # In CI or missing Piper: just print, no audio
+        print(f"(speak skipped) {text}")
+        return
+    
     """Sentence-by-sentence synthesis via Piper CLI, add pure silence between sentences, resample, and play."""
     text = (text or "").strip()
     if not text:

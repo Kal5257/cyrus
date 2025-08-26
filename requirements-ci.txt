@@ -1,8 +1,7 @@
+# core runtime & test deps only
 numpy
 requests
 faster-whisper
-sounddevice
-soundfile
 pytest
 pytest-cov
 pytest-html
