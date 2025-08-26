@@ -1,0 +1,11 @@
+faster-whisper
+piper-phonemize
+sounddevice
+soundfile
+numpy
+requests
+pytest
+pytest-cov
+pytest-html
+freezegun
+requests-mock

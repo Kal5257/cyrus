@@ -41,3 +41,21 @@ ehthumbs.db
 build/
 dist/
 *.egg-info/
+
+# Test / coverage reports
+reports/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Chatbot runtime data
+data/
+tmp_data/
+
+# Audio temp files
+*.wav
+*.mp3
+*.flac
+
+# Jupyter checkpoints
+*.ipynb_checkpoints/
