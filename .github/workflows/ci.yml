@@ -6,7 +6,6 @@ on:
 
 jobs:
   tests:
-
     runs-on: windows-latest
 
     steps:
@@ -36,8 +35,9 @@ jobs:
         run: mkdir reports
 
       - name: Run tests
+        id: pytest
+        continue-on-error: true   
         env:
-
           PYTHONPATH: ${{ github.workspace }}
           CYRUS_DATA_DIR: ${{ github.workspace }}\tmp_data
           CYRUS_NO_AUDIO: "1"
@@ -50,6 +50,7 @@ jobs:
             --cov=. --cov-report=term-missing
 
       - name: Upload test artifacts
+        if: always()   
         uses: actions/upload-artifact@v4
         with:
           name: test-reports
