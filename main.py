@@ -1,18 +1,15 @@
-# Imports
-
 import json
 import os
 import shutil
 import subprocess
 import tempfile
 import wave
-
 import numpy as np
 import requests
 import sounddevice as sd
 import soundfile as sf
 import re
-import time  # <-- added
+import time
 
 try:
     import piper
@@ -20,26 +17,20 @@ try:
 except Exception:
     piper = None
     HAS_PIPER = False
-    
 
 from faster_whisper import WhisperModel
-from audio_io import record_seconds, resample_linear   
-
+from audio_io import record_seconds, resample_linear
 from memory import (
     load_facts, save_facts, append_history, load_recent_history,
     add_fact, forget_fact, summarize_facts, parse_memory_command
 )
 
-# Config 
-OLLAMA_MODEL = "llama3"                 
+OLLAMA_MODEL = "llama3"
 OLLAMA_BASE  = "http://localhost:11434"
-WHISPER_SIZE = "small"                  
+WHISPER_SIZE = "small"
 
-# Piper voice model paths
 PIPER_VOICE_ONNX = r".\voices\en_US-ryan-high.onnx"
-PIPER_VOICE_CFG  = r".\voices\en_US-ryan-high.onnx.json"   
-
-# CLI fallback 
+PIPER_VOICE_CFG  = r".\voices\en_US-ryan-high.onnx.json"
 PIPER_EXE = shutil.which("piper.exe") or (os.path.abspath("./piper.exe") if os.path.exists("./piper.exe") else None)
 
 SYSTEM_PROMPT = (
@@ -51,23 +42,67 @@ SYSTEM_PROMPT = (
     "If the user says 'goodbye', say a short farewell."
 )
 
-# STT  
+_greet_re = re.compile(r'^\s*(hi|hello|hey|hiya|yo|sup|good (morning|afternoon|evening))\b', re.I)
+_mem_query_re = re.compile(
+    r'(what do you remember|what do you know about me|do you remember|remember what|what(?:\'s| is) my favorite)',
+    re.I
+)
+
+def is_greeting(text: str) -> bool:
+    return bool(_greet_re.match(text or ""))
+
+def asks_for_memory(text: str) -> bool:
+    return bool(_mem_query_re.search(text or ""))
+
+def _split_sentences(text: str):
+    parts = re.split(r'(?<=[\.\?\!])\s+', (text or "").strip())
+    return [p for p in parts if p]
+
+def sanitize_unsolicited_memory_reply(reply: str, user_asked_for_memory: bool, facts) -> str:
+    if user_asked_for_memory:
+        return reply or ""
+    sentences = _split_sentences(reply or "")
+    if not sentences:
+        return reply or ""
+    fact_tokens = set()
+    try:
+        for f in (facts.get("facts") or []):
+            t = (f.get("text") if isinstance(f, dict) else f) or ""
+            t = t.strip().lower()
+            if t and 1 <= len(t) <= 64:
+                fact_tokens.add(t)
+        prof = facts.get("profile", {}) or {}
+        for k in ("name", "pronouns"):
+            v = (prof.get(k) or "").strip().lower()
+            if v:
+                fact_tokens.add(v)
+    except Exception:
+        pass
+    cleaned = []
+    for s in sentences:
+        sl = s.strip().lower()
+        if sl.startswith("i remember ") or sl.startswith("i know ") or " as you mentioned" in sl:
+            continue
+        if any(tok and tok in sl for tok in fact_tokens):
+            continue
+        cleaned.append(s.strip())
+    text = " ".join(cleaned).strip()
+    if not text:
+        text = "Hi! How can I help?"
+    return text
+
 whisper = WhisperModel(WHISPER_SIZE, device="cpu", compute_type="int8")
 print("[whisper] using cpu/int8")
 
-# Load memory
 facts = load_facts()
 print("[memory] loaded facts:", summarize_facts(facts) or "(none)")
 
-# Piper TTS 
 def load_voice():
-
     if not HAS_PIPER:
         print("[piper] not available; skipping TTS init.")
         return None, 22050
-     
     print(f"[piper] loading voice: {PIPER_VOICE_ONNX}")
-    v = piper.PiperVoice.load(PIPER_VOICE_ONNX)  
+    v = piper.PiperVoice.load(PIPER_VOICE_ONNX)
     try:
         rate = int(getattr(v, "sample_rate", None) or v.config.sample_rate)
     except Exception:
@@ -77,7 +112,6 @@ def load_voice():
 _tts, _rate = load_voice()
 
 def _resample_float32(x: np.ndarray, src_rate: int, dst_rate: int) -> np.ndarray:
-    """Linear resample float32 audio (supports mono or stereo)."""
     if src_rate == dst_rate:
         return x
     if x.size == 0:
@@ -93,33 +127,18 @@ def _resample_float32(x: np.ndarray, src_rate: int, dst_rate: int) -> np.ndarray
     return y.astype(np.float32)
 
 def _current_output_rate() -> int:
-    """Return default output device's native sample rate (e.g., 48000 on gaming headsets)."""
-    info = sd.query_devices(None, 'output')  
+    info = sd.query_devices(None, 'output')
     return int(info['default_samplerate'])
 
-def _split_sentences(text: str):
-
-    # simple sentence splitter
-    parts = re.split(r'(?<=[\.\?\!])\s+', text.strip())
-    return [p for p in parts if p]
-
 def _synthesize_to_wav(text: str) -> tuple[str, int]:
-    """
-    Use piper-tts Python API to synthesize to a proper WAV.
-    Returns (wav_path, sample_rate). May return (None, None) if nothing was produced.
-    """
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
     tmp_path = tmp.name
     tmp.close()
-
-   
     with wave.open(tmp_path, "wb") as wf:
-        wf.setnchannels(1)       
-        wf.setsampwidth(2)       
-        wf.setframerate(_rate)   
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(_rate)
         _tts.synthesize(text, wf)
-
-    # Verify frames 
     try:
         with wave.open(tmp_path, "rb") as wf:
             frames = wf.getnframes()
@@ -127,11 +146,9 @@ def _synthesize_to_wav(text: str) -> tuple[str, int]:
                 return None, None
     except wave.Error:
         return None, None
-
     return tmp_path, _rate
 
 def _synthesize_cli(text: str) -> tuple[str, int]:
-    """Fallback: call piper.exe to synthesize a WAV. Returns (wav_path, sample_rate) or (None, None)."""
     if not PIPER_EXE:
         return None, None
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
@@ -153,10 +170,10 @@ def _synthesize_cli(text: str) -> tuple[str, int]:
         return tmp_path, rate
     except Exception:
         return None, None
-    
+
 def _fade_edges(x: np.ndarray, sr: int, ms: float = 5.0) -> np.ndarray:
     n = max(1, int(sr * ms / 1000.0))
-    if x.size <= n: 
+    if x.size <= n:
         return x
     ramp = np.linspace(0.0, 1.0, n, dtype=np.float32)
     x[:n] *= ramp
@@ -164,7 +181,6 @@ def _fade_edges(x: np.ndarray, sr: int, ms: float = 5.0) -> np.ndarray:
     return x
 
 def _noise_gate(x: np.ndarray, sr: int, win_ms: float = 20.0, thresh: float = 1e-3) -> np.ndarray:
-    """Zero out frames whose short-term RMS is below thresh (mono or stereo)."""
     if x.ndim == 1:
         x = x.reshape(-1, 1)
     hop = max(1, int(sr * win_ms / 1000.0))
@@ -180,34 +196,24 @@ def _noise_gate(x: np.ndarray, sr: int, win_ms: float = 20.0, thresh: float = 1e
     return y
 
 def speak(text: str, pause_sec: float = 0.28, length_scale: float = 1.05):
-
     if not HAS_PIPER or _tts is None:
-        # In CI or missing Piper: just print, no audio
         print(f"(speak skipped) {text}")
         return
-    
-    """Sentence-by-sentence synthesis via Piper CLI, add pure silence between sentences, resample, and play."""
     text = (text or "").strip()
     if not text:
         return
-
     sentences = _split_sentences(text)
     if not sentences:
         return
-
     out_rate = _current_output_rate()
     chunks = []
-
     for sent in sentences:
-        # synth one sentence 
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
         tmp_path = tmp.name
         tmp.close()
-
         used_cli = False
         if PIPER_EXE:
             try:
-                # no sentence_silence here
                 subprocess.run(
                     [
                         PIPER_EXE,
@@ -223,42 +229,28 @@ def speak(text: str, pause_sec: float = 0.28, length_scale: float = 1.05):
                 used_cli = True
             except Exception:
                 used_cli = False
-
         if not used_cli:
-            # Fallback: Python API, single sentence
             with wave.open(tmp_path, "wb") as wf:
                 wf.setnchannels(1)
                 wf.setsampwidth(2)
                 wf.setframerate(_rate)
                 _tts.synthesize(sent, wf)
-
-       
         data, in_rate = sf.read(tmp_path, dtype="float32", always_2d=False)
-        if data.size == 0:
+        if np.size(data) == 0:
             continue
         if in_rate != out_rate:
             data = _resample_float32(data, in_rate, out_rate)
         chunks.append(data)
-
-        # Insert pure digital silence between sentences 
         if pause_sec > 0:
             chunks.append(np.zeros(int(pause_sec * out_rate), dtype=np.float32))
-
     if not chunks:
         print("[piper] got empty audio; skipping playback.")
         return
-
     audio = np.concatenate(chunks, axis=0)
-
-    # tiny fade to avoid clicks at boundaries
     audio = _fade_edges(audio, out_rate, ms=6.0)
-
     sd.play(audio, out_rate)
     sd.wait()
 
-
-
-# Ollama helpers 
 def _parse_streaming(resp):
     parts = []
     for line in resp.iter_lines(decode_unicode=True):
@@ -286,7 +278,6 @@ def _flatten_messages_for_prompt(messages):
     return "\n".join(lines)
 
 def ask_ollama_with_history(messages, model=OLLAMA_MODEL):
-    # 1) Try /api/chat non-stream
     try:
         r = requests.post(
             f"{OLLAMA_BASE}/api/chat",
@@ -306,8 +297,6 @@ def ask_ollama_with_history(messages, model=OLLAMA_MODEL):
             return _parse_streaming(r)
     except requests.RequestException:
         pass
-
-    # 2) Fallback to /api/generate
     prompt = _flatten_messages_for_prompt(messages)
     try:
         r = requests.post(
@@ -319,7 +308,6 @@ def ask_ollama_with_history(messages, model=OLLAMA_MODEL):
             return r.json().get("response", "").strip()
     except requests.JSONDecodeError:
         pass
-
     r = requests.post(
         f"{OLLAMA_BASE}/api/generate",
         json={"model": model, "prompt": prompt, "stream": True},
@@ -329,7 +317,6 @@ def ask_ollama_with_history(messages, model=OLLAMA_MODEL):
     r.raise_for_status()
     return _parse_streaming(r)
 
-# STT helper 
 def transcribe_int16(audio_int16, in_rate_hz: int) -> str:
     print("Transcribing...")
     if in_rate_hz != 16000:
@@ -338,42 +325,29 @@ def transcribe_int16(audio_int16, in_rate_hz: int) -> str:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         with wave.open(tmp.name, "wb") as wf:
             wf.setnchannels(1)
-            wf.setsampwidth(2)  # int16
+            wf.setsampwidth(2)
             wf.setframerate(in_rate_hz)
             wf.writeframes(audio_int16.tobytes())
         segments, _ = whisper.transcribe(tmp.name, beam_size=1)
     return "".join(s.text for s in segments).strip()
 
-# Main loop 
 if __name__ == "__main__":
     print("Jarvis is listening. Say 'goodbye' to exit, or 'reset' to clear memory.\n")
-
-    # Seed messages with system prompt + memory
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if facts:
         messages.append({"role": "system", "content": "Known facts about Kal:\n" + summarize_facts(facts)})
-
     try:
         while True:
-            # 1) Record speech (10 seconds)
             audio, in_rate, out_rate, in_idx, out_idx = record_seconds(10)
-
-            # 2) STT
             text = transcribe_int16(audio, in_rate)
             if not text:
                 print("(no speech detected, listening again…)\n")
                 continue
-
             print(f"You said: {text}")
-
-            # Log user turn
             append_history({"role": "user", "text": text, "ts": time.time()})
-
-            # Local commands
             lower = text.lower().strip()
             if "reset" in lower:
                 messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-                # also re-inject known facts after reset so they persist in context
                 if facts:
                     messages.append({"role": "system", "content": "Known facts about Kal:\n" + summarize_facts(facts)})
                 speak("Okay, I cleared our conversation.")
@@ -383,8 +357,6 @@ if __name__ == "__main__":
                 speak("Goodbye!")
                 print("Assistant: Goodbye! 👋")
                 break
-
-            # Memory commands: "remember ..." / "forget ..."
             cmd = parse_memory_command(text)
             if cmd:
                 kind, payload = cmd
@@ -406,31 +378,24 @@ if __name__ == "__main__":
                     else:
                         speak("I couldn’t find that in memory.")
                     continue
-
-            # Quick memory query
             if "what do you remember" in lower or "what do you know about me" in lower:
                 summary = summarize_facts(facts) or "I don't have any saved facts yet."
                 speak("Here's what I remember.")
                 print(summary)
                 messages.append({"role": "system", "content": "Reminder of known facts:\n" + summary})
                 continue
-
-            # 3) Append user turn
+            if is_greeting(text) and not asks_for_memory(text):
+                messages.append({
+                    "role": "system",
+                    "content": "For this reply: do NOT mention or list any stored facts about the user. Give a short, neutral greeting and ask how you can help."
+                })
             messages.append({"role": "user", "content": text})
-
-            # 4) Ask Ollama with history
             print("Asking Ollama…")
             reply = ask_ollama_with_history(messages)
+            reply = sanitize_unsolicited_memory_reply(reply, asks_for_memory(text), facts)
             print("Assistant:", reply, "\n")
-
-            # Log assistant turn
             append_history({"role": "assistant", "text": reply, "ts": time.time()})
-
-            # 5) Append assistant turn
             messages.append({"role": "assistant", "content": reply})
-
-            # 6) Speak reply
             speak(reply)
-
     except KeyboardInterrupt:
         print("\nExiting. Bye! 👋")

@@ -89,3 +89,15 @@
 {"role": "assistant", "text": "Good morning! It's nice to chat with you, Kal. How can I assist you today?", "ts": 1756205315.6328995}
 {"role": "user", "text": "Good bye", "ts": 1756205339.747307}
 {"role": "assistant", "text": "Goodbye, Kal! It was great chatting with you. Have a wonderful day!", "ts": 1756205342.5444095}
+{"role": "user", "text": "Hello?", "ts": 1756214873.9229028}
+{"role": "assistant", "text": "Hi Kal! It's great to chat with you again. What can I help you with today?", "ts": 1756214884.377998}
+{"role": "user", "text": "What do you have stored in your memory?", "ts": 1756214907.4001372}
+{"role": "assistant", "text": "I remember that you're a user named Kal, and she/her are your preferred pronouns. Additionally, I recall that you mentioned loving the color black and that pizza is your favorite food. That's all for now!", "ts": 1756214910.7915783}
+{"role": "user", "text": "ლʀ ლʀʀʀʀʀʀʀʀ ლʀʀʀʀʀʀʀʀʀ", "ts": 1756214967.588968}
+{"role": "assistant", "text": "I think you might be trying to convey something, Kal? If I'm correct, it seems like you're expressing a mix of excitement and enthusiasm! Would you like to share what's got you so pumped up?", "ts": 1756214970.9774446}
+{"role": "user", "text": "No exit, goodbye.", "ts": 1756214998.9814768}
+{"role": "user", "text": "Hello!", "ts": 1756642091.7564}
+{"role": "assistant", "text": "Hello Kal! It's great to chat with you again. You mentioned earlier that you love the color black and that your favorite food is pizza. Is there something specific you'd like to talk about or ask for help with today?", "ts": 1756642111.6157322}
+{"role": "user", "text": "I want you to not mention my interests when I first introduce myself to you. I want you to only mention them when I ask.", "ts": 1756642144.2057521}
+{"role": "assistant", "text": "Apologies for the mistake! From now on, I'll keep any stored information about you private until you explicitly ask me to recall it.\n\nSo, hello Kal! It's great to chat with you again. How can I assist you today?", "ts": 1756642147.7995543}
+{"role": "user", "text": "Oh, goodbye.", "ts": 1756642182.170913}
