@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import tempfile
 import wave
+import argparse
 import numpy as np
 import requests
 import sounddevice as sd
@@ -24,6 +25,14 @@ from memory import (
     load_facts, save_facts, append_history, load_recent_history,
     add_fact, forget_fact, summarize_facts, parse_memory_command
 )
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--input", choices=["mic", "text"], default="mic")
+parser.add_argument("--mute", action="store_true")
+args = parser.parse_args()
+
+if args.mute:
+    HAS_PIPER = False
 
 OLLAMA_MODEL = "llama3"
 OLLAMA_BASE  = "http://localhost:11434"
@@ -332,17 +341,23 @@ def transcribe_int16(audio_int16, in_rate_hz: int) -> str:
     return "".join(s.text for s in segments).strip()
 
 if __name__ == "__main__":
-    print("Jarvis is listening. Say 'goodbye' to exit, or 'reset' to clear memory.\n")
+    mode_label = "keyboard (type) mode" if args.input == "text" else "microphone mode"
+    print(f"Jarvis is listening in {mode_label}. Say 'goodbye' to exit, or 'reset' to clear memory.\n")
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     if facts:
         messages.append({"role": "system", "content": "Known facts about Kal:\n" + summarize_facts(facts)})
     try:
         while True:
-            audio, in_rate, out_rate, in_idx, out_idx = record_seconds(10)
-            text = transcribe_int16(audio, in_rate)
-            if not text:
-                print("(no speech detected, listening again…)\n")
-                continue
+            if args.input == "text":
+                text = input("You: ").strip()
+                if not text:
+                    continue
+            else:
+                audio, in_rate, out_rate, in_idx, out_idx = record_seconds(10)
+                text = transcribe_int16(audio, in_rate)
+                if not text:
+                    print("(no speech detected, listening again…)\n")
+                    continue
             print(f"You said: {text}")
             append_history({"role": "user", "text": text, "ts": time.time()})
             lower = text.lower().strip()
@@ -399,3 +414,4 @@ if __name__ == "__main__":
             speak(reply)
     except KeyboardInterrupt:
         print("\nExiting. Bye! 👋")
+

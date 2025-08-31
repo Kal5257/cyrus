@@ -101,3 +101,5 @@
 {"role": "user", "text": "I want you to not mention my interests when I first introduce myself to you. I want you to only mention them when I ask.", "ts": 1756642144.2057521}
 {"role": "assistant", "text": "Apologies for the mistake! From now on, I'll keep any stored information about you private until you explicitly ask me to recall it.\n\nSo, hello Kal! It's great to chat with you again. How can I assist you today?", "ts": 1756642147.7995543}
 {"role": "user", "text": "Oh, goodbye.", "ts": 1756642182.170913}
+{"role": "user", "text": "अमेजो तुज जाने अमेजो तुज", "ts": 1756643060.62759}
+{"role": "assistant", "text": "I'm happy to help you with that! It seems like you're speaking in Hindi, and I'll do my best to understand what you're saying. Since we're starting from scratch, would you like me to summarize the context of our conversation so far?", "ts": 1756643068.8060997}
